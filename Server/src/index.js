@@ -236,6 +236,16 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.method === 'OPTIONS', // Skip rate limiting for OPTIONS (CORS preflight)
+  handler: (req, res) => {
+    const retryAfter = Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000);
+    res.status(429).json({
+      success: false,
+      message: 'Too many authentication attempts, please try again later.',
+      error: 'Rate limit exceeded',
+      retryAfter: retryAfter,
+      retryAfterSeconds: retryAfter
+    });
+  }
 });
 
 const paymentLimiter = rateLimit({
@@ -295,6 +305,10 @@ app.use((req, res, next) => {
 app.use('/api', (req, res, next) => {
   if (req.method === 'OPTIONS') {
     return next(); // Skip rate limiting for OPTIONS preflight requests
+  }
+  // Skip general limiter for auth routes (they have their own limiter)
+  if (req.path.startsWith('/login') || req.path.startsWith('/user') || req.path.startsWith('/github/login')) {
+    return next();
   }
   generalLimiter(req, res, next);
 });

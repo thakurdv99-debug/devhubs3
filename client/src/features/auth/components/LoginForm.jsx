@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { Link, useNavigate } from "react-router-dom";
 import { FaGithub, FaEnvelope, FaLock, FaSignInAlt } from "react-icons/fa";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "@app/providers/AuthProvider";
 import { auth, githubProvider, signInWithPopup } from "@shared/config/firebase";
@@ -13,6 +13,7 @@ const LoginPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [retryAfter, setRetryAfter] = useState(null);
   const navigate = useNavigate();
   
   // Safely get auth context
@@ -38,6 +39,22 @@ const LoginPage = () => {
   
   const loginUser = authContext?.loginUser ?? (async () => {});
 
+  // Handle countdown for retry after
+  useEffect(() => {
+    if (retryAfter !== null && retryAfter > 0) {
+      const interval = setInterval(() => {
+        setRetryAfter((prev) => {
+          if (prev <= 1) {
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [retryAfter]);
+
   const handelChange = (e) => {
     setformdata({ ...formdata, [e.target.name]: e.target.value });
   };
@@ -46,6 +63,7 @@ const LoginPage = () => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setRetryAfter(null);
 
     try {
       const Login_Api = `${import.meta.env.VITE_LOGIN_API}`;
@@ -67,7 +85,17 @@ const LoginPage = () => {
         setLoading(false);
       }
     } catch (error) {
-      setError(error.response?.data?.message || "Invalid email or password");
+      // Handle 429 rate limit errors
+      if (error.response?.status === 429) {
+        const retryAfterValue = error.response?.data?.retryAfter || error.response?.data?.retryAfterSeconds;
+        if (retryAfterValue) {
+          setRetryAfter(retryAfterValue);
+        }
+        const errorMessage = error.response?.data?.message || "Too many login attempts. Please wait before trying again.";
+        setError(errorMessage);
+      } else {
+        setError(error.response?.data?.message || "Invalid email or password");
+      }
       setLoading(false);
     }
   };
@@ -93,7 +121,16 @@ const LoginPage = () => {
         setError("GitHub login failed. Please try again.");
       }
     } catch (error) {
-      setError("GitHub authentication failed. Try again.");
+      // Handle 429 rate limit errors for GitHub login
+      if (error.response?.status === 429 || (error instanceof Response && error.status === 429)) {
+        const retryAfterValue = error.response?.data?.retryAfter || error.response?.data?.retryAfterSeconds;
+        if (retryAfterValue) {
+          setRetryAfter(retryAfterValue);
+        }
+        setError("Too many login attempts. Please wait before trying again.");
+      } else {
+        setError("GitHub authentication failed. Try again.");
+      }
       console.error("GitHub login error:", error);
     }
   };
@@ -122,7 +159,12 @@ const LoginPage = () => {
           {/* Error message */}
           {error && (
             <div className="mb-6 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
-              {error}
+              <p>{error}</p>
+              {retryAfter !== null && retryAfter > 0 && (
+                <p className="text-xs text-red-200 mt-2">
+                  Please wait {Math.ceil(retryAfter / 60)} minute{Math.ceil(retryAfter / 60) !== 1 ? 's' : ''} ({retryAfter} seconds) before trying again.
+                </p>
+              )}
             </div>
           )}
 
