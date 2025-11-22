@@ -92,7 +92,7 @@ const RazorpayPaymentModal = ({ isOpen, onClose, paymentData, onSuccess, onError
         // Setup Razorpay options
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          amount: order?.amount,
+          amount: order?.amount || (order?.order_amount ? Math.round(order.order_amount * 100) : 0), // Ensure paise format
           currency: 'INR',
           name: 'DevHubs',
           description: paymentData?.description || 'Bid Fee Payment',

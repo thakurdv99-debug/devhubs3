@@ -187,7 +187,8 @@ export const createOrder = async ({ orderId, amount, currency = 'INR', customer,
     const responseWithToken = {
       order_id: data.id,
       cf_order_id: data.id, // Keep for compatibility
-      order_amount: amount,
+      amount: data.amount, // Add Razorpay's amount in paise
+      order_amount: amount, // Keep for compatibility (in rupees)
       order_currency: currency,
       order_status: data.status,
       payment_session_id: data.id, // Razorpay uses order ID as session ID
