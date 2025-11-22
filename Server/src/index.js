@@ -239,11 +239,22 @@ const authLimiter = rateLimit({
 });
 
 const paymentLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per windowMs
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many payment requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  handler: (req, res) => {
+    const retryAfter = Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000);
+    res.status(429).json({
+      success: false,
+      message: 'Too many payment requests, please try again later.',
+      error: 'Rate limit exceeded',
+      retryAfter: retryAfter,
+      retryAfterSeconds: retryAfter
+    });
+  }
 });
 
 // Socket.IO CORS configuration

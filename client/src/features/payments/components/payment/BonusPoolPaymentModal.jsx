@@ -12,6 +12,7 @@ const BonusPoolPaymentModal = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryAfter, setRetryAfter] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState(null);
 
@@ -28,6 +29,22 @@ const BonusPoolPaymentModal = ({
     }).format(amount);
   };
 
+  // Handle countdown for retry after
+  useEffect(() => {
+    if (retryAfter !== null && retryAfter > 0) {
+      const interval = setInterval(() => {
+        setRetryAfter((prev) => {
+          if (prev <= 1) {
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [retryAfter]);
+
   const handleFundBonus = async () => {
     if (!project?.bonus_pool_amount || !project?.bonus_pool_contributors) {
       setError('Bonus pool details are required');
@@ -36,6 +53,7 @@ const BonusPoolPaymentModal = ({
 
     setLoading(true);
     setError('');
+    setRetryAfter(null);
 
     try {
       const token = localStorage.getItem('token');
@@ -61,8 +79,16 @@ const BonusPoolPaymentModal = ({
         throw new Error(response.message || 'Failed to create payment');
       }
     } catch (error) {
-          // Error is already logged by paymentApi
-      setError(error.message || 'Failed to create payment. Please try again.');
+      // Error is already logged by paymentApi
+      const errorMessage = error.message || 'Failed to create payment. Please try again.';
+      setError(errorMessage);
+      
+      // Handle 429 rate limit errors with retry information
+      if (error.status === 429 && error.retryAfter) {
+        setRetryAfter(error.retryAfter);
+      } else {
+        setRetryAfter(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -171,11 +197,18 @@ const BonusPoolPaymentModal = ({
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <div className="flex items-center text-red-400">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="flex items-start text-red-400">
+                  <svg className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  {error}
+                  <div className="flex-1">
+                    <p>{error}</p>
+                    {retryAfter !== null && retryAfter > 0 && (
+                      <p className="text-xs text-red-300 mt-1">
+                        Please wait {Math.ceil(retryAfter / 60)} minute{Math.ceil(retryAfter / 60) !== 1 ? 's' : ''} ({retryAfter} seconds) before trying again.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )}

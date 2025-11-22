@@ -50,7 +50,8 @@ export const ERROR_MESSAGES = {
   UNKNOWN_ERROR: 'Something went wrong. Please try again.',
   SERVER_ERROR: 'Server error. Please try again later.',
   NOT_FOUND: 'The requested resource was not found.',
-  RATE_LIMITED: 'Too many requests. Please wait a moment and try again.',
+  RATE_LIMITED: 'Too many payment requests. Please wait a moment and try again.',
+  PAYMENT_RATE_LIMITED: 'Too many payment requests. Please wait before trying again.',
   MAINTENANCE_MODE: 'The system is currently under maintenance. Please try again later.',
   
   // Subscription errors
@@ -109,6 +110,10 @@ export const getErrorMessage = (error, context = '') => {
     }
     
     if (message.includes('rate limit') || error?.response?.status === 429) {
+      // Check if it's a payment-related rate limit
+      if (context && context.toLowerCase().includes('payment')) {
+        return ERROR_MESSAGES.PAYMENT_RATE_LIMITED;
+      }
       return ERROR_MESSAGES.RATE_LIMITED;
     }
     
@@ -127,6 +132,10 @@ export const getErrorMessage = (error, context = '') => {
     const contextLower = context.toLowerCase();
     
     if (contextLower.includes('payment')) {
+      // Check if it's a rate limit error in payment context
+      if (error?.status === 429 || error?.response?.status === 429) {
+        return ERROR_MESSAGES.PAYMENT_RATE_LIMITED;
+      }
       return ERROR_MESSAGES.PAYMENT_FAILED;
     }
     

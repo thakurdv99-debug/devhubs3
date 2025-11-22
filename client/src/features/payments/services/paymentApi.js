@@ -25,6 +25,37 @@ const PAYMENT_ENDPOINTS = {
 const handleResponse = async (response) => {
   if (!response.ok) {
     let errorMessage = `HTTP error! status: ${response.status}`;
+    let retryAfter = null;
+    
+    // Check for 429 rate limit error
+    if (response.status === 429) {
+      // Extract Retry-After header (can be read multiple times)
+      const retryAfterHeader = response.headers.get('Retry-After');
+      if (retryAfterHeader) {
+        retryAfter = parseInt(retryAfterHeader, 10);
+      }
+      
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+        // Use retryAfter from response body if available (takes precedence over header)
+        if (errorData.retryAfter || errorData.retryAfterSeconds) {
+          retryAfter = errorData.retryAfter || errorData.retryAfterSeconds;
+        }
+      } catch (e) {
+        // If JSON parsing fails, use default error message
+      }
+      
+      // Create enhanced error with retry information
+      const error = new Error(errorMessage);
+      error.status = 429;
+      error.retryAfter = retryAfter;
+      if (retryAfter) {
+        const minutes = Math.ceil(retryAfter / 60);
+        error.message = `${errorMessage} Please try again in ${minutes} minute${minutes !== 1 ? 's' : ''}.`;
+      }
+      throw error;
+    }
     
     try {
       const errorData = await response.json();
