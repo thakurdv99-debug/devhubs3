@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePayment } from '../context/PaymentContext';
 import PaymentModal from '../components/payment/PaymentModal';
 import LoadingSpinner from '../components/LoadingSpinner';
-import NavBar from '../components/NavBar';
+import NavBar from '@shared/components/layout/NavBar';
 import BankDetailsForm from '../components/BankDetailsForm';
 import escrowWalletApi from '../services/escrowWalletApi';
 import notificationService from '../services/notificationService';

@@ -237,7 +237,10 @@ export const createBid = async (req, res) => {
 
   } catch (error) {
     console.error("Error creating bid:", error.message);
-    res.status(500).json({ message: error.message });
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.status(500).json({ 
+      message: isProduction ? 'Failed to create bid. Please try again.' : error.message 
+    });
   }
 };
 
@@ -306,7 +309,10 @@ export const getBid = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching bid:", error);
-    res.status(500).json({ message: error.message });
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.status(500).json({ 
+      message: isProduction ? 'An error occurred. Please try again.' : error.message 
+    });
   }
 };
 

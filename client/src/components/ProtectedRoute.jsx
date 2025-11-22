@@ -1,9 +1,30 @@
-import { useContext } from "react";
 import { Navigate, Outlet } from "react-router-dom";
-import AuthContext from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 
 const ProtectedRoute = () => {
-    const { user, loading } = useContext(AuthContext);
+    // Safely get auth context
+    const defaultAuth = {
+        user: null,
+        loading: true,
+        loginUser: async () => {},
+        logoutUser: () => {},
+        refreshUser: async () => {}
+    };
+
+    let authContext = defaultAuth;
+    try {
+        if (useAuth && typeof useAuth === 'function') {
+            const result = useAuth();
+            if (result && typeof result === 'object') {
+                authContext = result;
+            }
+        }
+    } catch (error) {
+        console.error('Error getting auth context:', error);
+    }
+    
+    const user = authContext?.user ?? null;
+    const loading = authContext?.loading ?? true;
 
     if (loading) return <div>Loading...</div>; // Prevent flickering while checking auth
 

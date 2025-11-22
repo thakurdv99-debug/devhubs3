@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { useEffect } from "react";
@@ -8,7 +8,7 @@ import FileUploadField from "../components/FileUploadField";
 import { usePayment } from "../context/PaymentContext";
 import { PAYMENT_TYPES } from "../constants/paymentConstants";
 import BonusPoolPaymentModal from "../components/payment/BonusPoolPaymentModal";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 
 import axios from "axios";
 

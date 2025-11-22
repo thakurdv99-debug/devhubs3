@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { FaGithub, FaUser, FaEnvelope, FaLock, FaCode, FaLaptopCode, FaGraduationCap } from "react-icons/fa";
 import { useState } from "react";
 import axiosInstance from "../Config/axiosConfig";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 import { auth, githubProvider, signInWithPopup } from "../Config/firebase";
 
 const CreateAccount = () => {
@@ -12,7 +12,28 @@ const CreateAccount = () => {
     password: "",
     usertype: "",
   });
-  const { loginUser } = useAuth();
+  // Safely get auth context
+  const defaultAuth = {
+    user: null,
+    loginUser: async () => {},
+    logoutUser: () => {},
+    loading: false,
+    refreshUser: async () => {}
+  };
+
+  let authContext = defaultAuth;
+  try {
+    if (useAuth && typeof useAuth === 'function') {
+      const result = useAuth();
+      if (result && typeof result === 'object') {
+        authContext = result;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting auth context:', error);
+  }
+  
+  const loginUser = authContext?.loginUser ?? (async () => {});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);

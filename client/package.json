@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:prod": "npm install --legacy-peer-deps && vite build",
+    "build:check": "node -e \"const env = require('dotenv').config(); const required = ['VITE_API_URL', 'VITE_FIREBASE_API_KEY', 'VITE_RAZORPAY_KEY_ID']; const missing = required.filter(k => !process.env[k]); if(missing.length) { console.error('Missing:', missing); process.exit(1); }\"",
+    "prebuild": "npm run build:check || true",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -15,6 +17,8 @@
     "install:prod": "npm install --legacy-peer-deps"
   },
   "dependencies": {
+    "@sentry/react": "^10.26.0",
+    "@sentry/vite-plugin": "^4.6.1",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/vite": "^4.0.13",
     "axios": "^1.8.3",
@@ -35,12 +39,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
-    "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4",
-    "@vitejs/plugin-react": "^4.3.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.5.2",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.19",

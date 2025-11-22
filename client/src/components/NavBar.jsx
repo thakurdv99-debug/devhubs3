@@ -1,13 +1,37 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import PremiumBadge from "./PremiumBadge";
 
 
 const Navbar = () => {
-  const { user, logoutUser } = useAuth();
+  // Default fallback values
+  const defaultAuth = {
+    user: null,
+    logoutUser: () => {},
+    loading: false,
+    loginUser: async () => {},
+    refreshUser: async () => {}
+  };
+
+  // Safely get auth context
+  let authContext = defaultAuth;
+  try {
+    if (useAuth && typeof useAuth === 'function') {
+      const result = useAuth();
+      if (result && typeof result === 'object') {
+        authContext = result;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting auth context:', error);
+  }
+  
+  // Safely destructure with fallback values
+  const user = authContext?.user ?? null;
+  const logoutUser = authContext?.logoutUser ?? (() => {});
   const [profileExsist, setProfileExist] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [hasListedProjects, setHasListedProjects] = useState(false);

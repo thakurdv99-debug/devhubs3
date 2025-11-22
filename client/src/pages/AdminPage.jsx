@@ -21,7 +21,7 @@ import {
   FaUserCog,
   FaShieldAlt,
 } from "react-icons/fa";
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { Link } from "react-router-dom";
 import { projectSelectionApi } from "../services/projectSelectionApi";
 import { escrowWalletApi } from "../services/escrowWalletApi";

@@ -1,10 +1,10 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from "react";
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@app/providers/AuthProvider';
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import RazorpayPaymentModal from "../components/payment/RazorpayPaymentModal";
 
 // Animation variants

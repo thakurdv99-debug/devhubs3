@@ -1,6 +1,6 @@
 import { FaUsers, FaCode, FaRocket, FaLaptopCode } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 

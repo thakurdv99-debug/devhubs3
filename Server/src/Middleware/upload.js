@@ -1,6 +1,7 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { logger } from '../utils/logger.js';
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = process.env.UPLOADS_DIR || 'uploads';
@@ -14,8 +15,15 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
+    // Sanitize filename to prevent path traversal
+    const sanitizedOriginalName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(sanitizedOriginalName);
+    const name = path.basename(sanitizedOriginalName, ext);
+    
+    // Ensure filename is safe
+    const safeFilename = `${file.fieldname}-${uniqueSuffix}-${name}${ext}`;
+    cb(null, safeFilename);
   }
 });
 
@@ -39,14 +47,65 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Create multer instance
+// Create multer instance with security limits
+const maxFileSize = parseInt(process.env.MAX_FILE_SIZE_MB || '10') * 1024 * 1024; // Default 10MB
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: (process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024 // Default 10MB
+    fileSize: maxFileSize,
+    files: 10 // Maximum number of files
   }
 });
+
+// Security middleware to validate uploads
+export const validateUpload = (req, res, next) => {
+  try {
+    const files = req.allFiles ? req.allFiles() : [];
+    
+    // Check file count
+    if (files.length > 10) {
+      return res.status(400).json({ 
+        message: 'Too many files. Maximum 10 files allowed.' 
+      });
+    }
+    
+    // Validate each file
+    for (const file of files) {
+      // Check file size
+      if (file.size > maxFileSize) {
+        return res.status(400).json({ 
+          message: `File ${file.originalname} exceeds maximum size of ${process.env.MAX_FILE_SIZE_MB || 10}MB` 
+        });
+      }
+      
+      // Check for path traversal in filename
+      if (file.filename.includes('..') || file.filename.includes('/') || file.filename.includes('\\')) {
+        logger.error('Path traversal attempt detected', { filename: file.filename });
+        return res.status(400).json({ 
+          message: 'Invalid filename' 
+        });
+      }
+      
+      // Validate file path is within uploads directory
+      const filePath = path.resolve(uploadsDir, file.filename);
+      const uploadsPath = path.resolve(uploadsDir);
+      if (!filePath.startsWith(uploadsPath)) {
+        logger.error('Path traversal attempt detected', { filePath, uploadsPath });
+        return res.status(400).json({ 
+          message: 'Invalid file path' 
+        });
+      }
+    }
+    
+    next();
+  } catch (error) {
+    logger.error('Upload validation error', error);
+    res.status(500).json({ 
+      message: 'File validation failed' 
+    });
+  }
+};
 
 // Helper function to create upload middleware for specific fields
 export const uploadFields = (fields) => {

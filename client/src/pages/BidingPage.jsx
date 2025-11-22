@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { Link, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axios from "axios";
@@ -406,7 +406,7 @@ const BidingPage = () => {
               Project Description
             </h2>
             <p className="text-gray-300 leading-relaxed mb-6">
-              {project.project_description || "No description available"}
+              {project.Project_Description || "No description available"}
             </p>
 
             <div className="grid md:grid-cols-2 gap-6">
@@ -415,8 +415,8 @@ const BidingPage = () => {
                   Features
                 </h3>
                 <ul className="space-y-2 list-none">
-                  {project.Project_features ? (
-                    project.Project_features.split("\n")
+                  {project.Project_Features ? (
+                    project.Project_Features.split("\n")
                       .filter((feature) => feature.trim() !== "")
                       .map((feature, index) => (
                         <li key={index} className="flex items-start">

@@ -1,4 +1,4 @@
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import axios from "axios";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import userProjectsApi from "../utils/userProjectsApi";

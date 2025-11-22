@@ -1,4 +1,4 @@
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import ProjectCard from "../components/ProjectCard";

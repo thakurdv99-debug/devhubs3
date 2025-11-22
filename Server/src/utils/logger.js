@@ -1,18 +1,56 @@
+const isDevelopment = () => process.env.NODE_ENV === 'development';
+const isProduction = () => process.env.NODE_ENV === 'production';
+
 export const logger = {
   info: (message, data = {}) => {
-    console.log(`[INFO] ${new Date().toISOString()}: ${message}`, data);
+    if (isDevelopment() || !isProduction()) {
+      console.log(`[INFO] ${new Date().toISOString()}: ${message}`, data);
+    }
   },
   
   error: (message, error = {}) => {
-    console.error(`[ERROR] ${new Date().toISOString()}: ${message}`, error);
+    // Always log errors, but sanitize in production
+    if (isProduction()) {
+      console.error(`[ERROR] ${new Date().toISOString()}: ${message}`);
+    } else {
+      console.error(`[ERROR] ${new Date().toISOString()}: ${message}`, error);
+    }
+    
+    // Send to Sentry if configured
+    try {
+      const Sentry = require('@sentry/node');
+      if (Sentry && typeof Sentry.captureException === 'function') {
+        if (error instanceof Error) {
+          Sentry.captureException(error, {
+            tags: { logger: true },
+            extra: { message }
+          });
+        } else if (error && error.message) {
+          Sentry.captureException(new Error(error.message), {
+            tags: { logger: true },
+            extra: { message, errorData: error }
+          });
+        } else {
+          Sentry.captureMessage(message, {
+            level: 'error',
+            tags: { logger: true },
+            extra: error
+          });
+        }
+      }
+    } catch (sentryError) {
+      // Sentry might not be initialized, ignore
+    }
   },
   
   warn: (message, data = {}) => {
-    console.warn(`[WARN] ${new Date().toISOString()}: ${message}`, data);
+    if (isDevelopment() || !isProduction()) {
+      console.warn(`[WARN] ${new Date().toISOString()}: ${message}`, data);
+    }
   },
   
   debug: (message, data = {}) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (isDevelopment()) {
       console.log(`[DEBUG] ${new Date().toISOString()}: ${message}`, data);
     }
   }

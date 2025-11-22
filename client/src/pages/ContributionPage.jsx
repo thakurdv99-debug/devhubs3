@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 import { useChat } from "../context/ChatContext";
 import { projectTaskApi } from "../services/projectTaskApi";
 import { escrowWalletApi } from "../services/escrowWalletApi";

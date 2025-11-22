@@ -4,6 +4,14 @@ import dotenv from "dotenv";
 import { connectDb } from "./config/connectionDB.js";
 import cors from "cors";
 import mongoose from "mongoose";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { logger } from "./utils/logger.js";
+import { initSentry } from "./utils/sentry.js";
+import { handleError } from "./utils/error.js";
+
+// Initialize Sentry before anything else
+const Sentry = initSentry();
 import userRoute from "./Routes/userRoutes.js";
 import projectRoutes from "./Routes/ProjectListingRoutes.js";
 import biddingRoutes from "./Routes/BiddingRoutes.js";
@@ -29,101 +37,248 @@ import path from "path";
 dotenv.config();
 
 // Validate required environment variables
-const requiredEnvVars = ['JWT_SECRET'];
+const requiredEnvVars = ['JWT_SECRET', 'MONGODB_URI'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars);
-  console.error('⚠️ Server may not function properly without these variables');
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction) {
+    // Fail fast in production
+    console.error('Missing required environment variables:', missingEnvVars);
+    throw new Error(
+      `Missing required environment variables: ${missingEnvVars.join(', ')}. ` +
+      'Server cannot start without these variables.'
+    );
+  } else {
+    logger.error('Missing required environment variables:', { missing: missingEnvVars });
+    logger.warn('Server may not function properly without these variables');
+  }
 }
 
-// Log environment status
-console.log('📋 Environment Variables Status:');
-console.log('  JWT_SECRET:', process.env.JWT_SECRET ? '✅ Set' : '❌ Missing');
-console.log('  MONGODB_URI:', process.env.MONGODB_URI ? '✅ Set' : '❌ Missing');
-console.log('  FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing');
-console.log('  FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅ Set' : '❌ Missing');
-console.log('  FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅ Set' : '❌ Missing');
-console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
-console.log('  PORT:', process.env.PORT || 5000);
+// Log environment status (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  logger.info('Environment Variables Status:', {
+    JWT_SECRET: process.env.JWT_SECRET ? 'Set' : 'Missing',
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Missing',
+    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID ? 'Set' : 'Missing',
+    FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY ? 'Set' : 'Missing',
+    FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL ? 'Set' : 'Missing',
+    NODE_ENV: process.env.NODE_ENV || 'development',
+    PORT: process.env.PORT || 5001
+  });
+}
 
 // Initialize express app and server
 const app = express();
+
+// Add Sentry request handler (must be before other middleware)
+if (Sentry) {
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+}
+
 const server = http.createServer(app);
+
+// CORS Configuration - MUST BE FIRST (before Helmet and all other middleware)
+const getAllowedOrigins = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction) {
+    const envOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+      : ['https://devhubs.in', 'https://www.devhubs.in'];
+    return envOrigins;
+  } else {
+    return [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:5001',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
+    ];
+  }
+};
+
+const CorsOption = {
+  origin: function (origin, callback) {
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (!isProduction) {
+      return callback(null, true); // Allow all origins in development
+    }
+    const allowedOrigins = getAllowedOrigins();
+    if (!origin) {
+      return callback(new Error('CORS: Origin header required in production'));
+    }
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400,
+  preflightContinue: false,
+  optionsSuccessStatus: 200
+};
+
+// Apply CORS FIRST - Manual handler to ensure it works
+// This MUST be the first middleware after Sentry
+// FOR DEVELOPMENT: Always allow CORS from localhost origins
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // ALWAYS set CORS headers for localhost origins (development)
+  if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    
+    // Handle OPTIONS preflight requests immediately
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+  } else {
+    // For non-localhost origins, check production settings
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (!isProduction) {
+      // In development, allow all origins
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Max-Age', '86400');
+      
+      if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+      }
+    } else {
+      // Production: use allowed origins
+      const allowedOrigins = getAllowedOrigins();
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+      }
+      
+      if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+      }
+    }
+  }
+  
+  next();
+});
+
+// Security headers with Helmet (CSP disabled in development to avoid CORS issues)
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  } : false, // Disable CSP in development
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  frameguard: {
+    action: 'deny'
+  },
+  noSniff: true,
+  xssFilter: true
+}));
+
+// Rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS', // Skip rate limiting for OPTIONS (CORS preflight)
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many authentication attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS', // Skip rate limiting for OPTIONS (CORS preflight)
+});
+
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per windowMs
+  message: 'Too many payment requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Socket.IO CORS configuration
+const socketOrigins = process.env.NODE_ENV === 'production'
+  ? (process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+      : ['https://devhubs.in', 'https://www.devhubs.in'])
+  : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      'https://www.devhubs.in',
-      'https://www.devhubs.in/',
-      'http://localhost:5173',
-      'http://localhost:3000'
-    ],
+    origin: socketOrigins,
     credentials: true,
+    methods: ['GET', 'POST']
   },
 });
- console.log("🔧 Socket.IO: Server initialized");
 
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Ensure CORS headers are added to all responses (including errors)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Add CORS headers to all responses
+  if (origin && (!isProduction || getAllowedOrigins().includes(origin))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  next();
+});
 
-const CorsOption = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      console.log('🔓 Allowing request with no origin');
-      return callback(null, true);
-    }
-    
-    const allowedOrigins = [
-      'https://devhubs.in',
-      'https://www.devhubs.in',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:5000'
-    ];
-    
-    console.log(`🔒 Checking CORS for origin: ${origin}`);
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔓 Development mode: allowing all origins');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      console.log(`✅ Origin ${origin} is allowed`);
-      callback(null, true);
-    } else {
-      console.log(`❌ Origin ${origin} is not allowed`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
-}
-  console.log("Frontend_Uri: " + process.env.CLIENT_URL);
-  console.log("All Environment Variables:");
-  console.log("CLIENT_URL:", process.env.CLIENT_URL);
-  console.log("FRONTEND_URL:", process.env.FRONTEND_URL);
-  console.log("NODE_ENV:", process.env.NODE_ENV);
-  console.log("CORS Configuration: Allowing origins:", [
-    'https://www.devhubs.in',
-    'https://www.devhubs.in/',
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ]);
-app.use(cors(CorsOption));
-
-// Add OPTIONS handler for CORS pre-flight requests
-app.options('*', cors(CorsOption));
+// Apply general rate limiter to all API requests (after CORS, but skip OPTIONS)
+app.use('/api', (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next(); // Skip rate limiting for OPTIONS preflight requests
+  }
+  generalLimiter(req, res, next);
+});
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  logger.debug(`${req.method} ${req.path}`, { timestamp: new Date().toISOString() });
   next();
 });
 
@@ -145,16 +300,29 @@ app.get('/api/health', (req, res) => {
         total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
       },
       version: process.version,
-      port: process.env.PORT || 5000
+      port: process.env.PORT || 5001
     };
     
-    console.log("🏥 Health check requested:", healthStatus);
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // In production, return minimal information
+    if (isProduction) {
+      const minimalStatus = {
+        status: 'OK',
+        timestamp: new Date().toISOString()
+      };
+      logger.debug("Health check requested", minimalStatus);
+      return res.status(200).json(minimalStatus);
+    }
+    
+    logger.debug("Health check requested", healthStatus);
     res.status(200).json(healthStatus);
   } catch (error) {
-    console.error("❌ Health check error:", error);
+    logger.error("Health check error", error);
+    const isProduction = process.env.NODE_ENV === 'production';
     res.status(500).json({ 
       status: 'ERROR', 
-      message: error.message,
+      message: isProduction ? 'Health check failed' : error.message,
       timestamp: new Date().toISOString()
     });
   }
@@ -172,81 +340,132 @@ app.get('/', (req, res) => {
  
 
 // Import routes
+// Apply auth rate limiter to authentication routes (OPTIONS requests are already handled by CORS middleware)
+app.use("/api/user", (req, res, next) => {
+  if (req.method === 'OPTIONS') return next(); // Skip rate limiting for OPTIONS
+  authLimiter(req, res, next);
+});
+app.use("/api/login", (req, res, next) => {
+  if (req.method === 'OPTIONS') return next(); // Skip rate limiting for OPTIONS
+  authLimiter(req, res, next);
+});
+app.use("/api/github/login", (req, res, next) => {
+  if (req.method === 'OPTIONS') return next(); // Skip rate limiting for OPTIONS
+  authLimiter(req, res, next);
+});
+
 app.use("/api", userRoute) ; 
-app.use("/api/bid", biddingRoutes) ;
+app.use("/api/bid", biddingRoutes) ; 
 app.use("/api/admin", adminDashboardRoutes) ; 
-app.use("/api/notes", userNoteRoute ) ;
-app.use("/api", uploadRoutes) ;
+app.use("/api/notes", userNoteRoute ) ; 
+app.use("/api", uploadRoutes) ; 
 app.use("/api/saved-projects", savedProjectRoutes);
 app.use("/api/user-projects", userProjectsRoutes);
 
-// Payment routes
-app.use("/api/payments", paymentsRoutes);
+// Payment routes - apply payment rate limiter
+app.use("/api/payments", paymentLimiter, paymentsRoutes);
 app.use("/api/webhooks", webhooksRoutes);
-app.use("/api/projects", projectsPaymentRoutes);
+app.use("/api/projects", paymentLimiter, projectsPaymentRoutes);
 
 // Project selection routes
 app.use("/api/project-selection", projectSelectionRoutes);
-console.log("✅ Project Selection routes registered at /api/project-selection");
+logger.debug("Project Selection routes registered at /api/project-selection");
 
 // Escrow wallet routes
 app.use("/api/escrow", escrowWalletRoutes);
 
 // Project task routes (must come before general project routes to avoid conflicts)
 app.use("/api/project-tasks", projectTaskRoutes);
-console.log("✅ Project Task routes registered at /api/project-tasks");
+logger.debug("Project Task routes registered at /api/project-tasks");
 
 // Project routes (must come after project-tasks to avoid conflicts)
 app.use("/api/project", projectRoutes) ; 
 
 // Platform admin routes
 app.use("/api/platform-admin", platformAdminRoutes);
-console.log("✅ Platform Admin routes registered at /api/platform-admin");
+logger.debug("Platform Admin routes registered at /api/platform-admin");
 
 app.use("/api", chatRoutes);
-console.log("✅ Chat routes registered at /api/chat");
+logger.debug("Chat routes registered at /api/chat");
 
 // Initialize chat socket
 chatSocket(io);
 
-const port = process.env.PORT || 5000;
+// Add Sentry error handler (must be after all routes but before error middleware)
+if (Sentry) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
+// Add global error handler middleware (must be last)
+app.use(handleError);
+
+const port = process.env.PORT || 5001;
 
 // Add error handling for server startup
 server.on('error', (error) => {
-  console.error('❌ Server error:', error);
   if (error.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${port} is already in use`);
-    process.exit(1);
+    logger.error(`Port ${port} is already in use. Please:`);
+    logger.error(`1. Stop the process using port ${port}`);
+    logger.error(`2. Or change the PORT in your .env file`);
+    logger.error(`3. On Windows, find the process: netstat -ano | findstr :${port}`);
+    logger.error(`4. Kill it: taskkill /PID <PID> /F`);
   } else {
-    console.error('❌ Server failed to start:', error.message);
-    process.exit(1);
+    logger.error('Server failed to start:', { message: error.message });
   }
+  process.exit(1);
 });
 
 // Start server with proper error handling
 const startServer = async () => {
   try {
-    console.log("🚀 Starting DevHubs API Server...");
-    console.log("📋 Environment:", process.env.NODE_ENV || 'development');
-    console.log("🔗 Port:", port);
+    logger.info("Starting DevHubs API Server...", {
+      environment: process.env.NODE_ENV || 'development',
+      port
+    });
     
     // Start the server first
     server.listen(port, () => {
-      console.log(`✅ Server running on port ${port}`);
-      console.log(`🏥 Health check available at: http://localhost:${port}/api/health`);
-      console.log(`📊 Root endpoint: http://localhost:${port}/`);
+      logger.info(`Server running on port ${port}`, {
+        healthCheck: `http://localhost:${port}/api/health`,
+        rootEndpoint: `http://localhost:${port}/`
+      });
     });
     
-    // Then try to connect to database (non-blocking)
-    try {
-      await connectDb();
-    } catch (dbError) {
-      console.error('❌ Database connection failed:', dbError.message);
-      console.log('⚠️ Server is running without database connection');
+    // Then try to connect to database with retry logic
+    const maxRetries = 3;
+    let retryCount = 0;
+    let connected = false;
+    
+    while (retryCount < maxRetries && !connected) {
+      try {
+        await connectDb();
+        connected = true;
+        logger.info('Database connection established');
+      } catch (dbError) {
+        retryCount++;
+        logger.error(`Database connection attempt ${retryCount}/${maxRetries} failed:`, { 
+          message: dbError.message 
+        });
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff: wait 2^retryCount seconds
+          const waitTime = Math.pow(2, retryCount) * 1000;
+          logger.info(`Retrying database connection in ${waitTime/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        } else {
+          // In production, fail if database connection fails
+          if (process.env.NODE_ENV === 'production') {
+            logger.error('Database connection failed after all retries. Server cannot start in production without database.');
+            process.exit(1);
+          } else {
+            logger.warn('Server is running without database connection (development mode)');
+          }
+        }
+      }
     }
     
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 };

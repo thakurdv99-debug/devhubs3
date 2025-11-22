@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
-import Navbar from "../components/NavBar";
+import Navbar from "@shared/components/layout/NavBar";
 import ProjectCard from "../components/ProjectCard";
 import FreeProjectCard from "../components/FreeProjectCard";
 import FilterSidebar from "../components/FilterSidebar";
@@ -16,7 +16,10 @@ import { usePayment } from "../context/PaymentContext";
 // ===== Constants =====
 const ITEMS_PER_PAGE = 20;
 const SEARCH_DEBOUNCE_DELAY = 500;
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+if (!API_BASE_URL && import.meta.env.MODE === 'production') {
+  throw new Error('VITE_API_URL environment variable is required in production');
+}
 
 // ===== Project Categories =====
 const PROJECT_CATEGORIES = [

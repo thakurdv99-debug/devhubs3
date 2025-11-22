@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { FaGithub, FaEnvelope, FaLock, FaSignInAlt } from "react-icons/fa";
 import { useState } from "react";
 import axios from "axios";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@app/providers/AuthProvider";
 import { auth, githubProvider, signInWithPopup } from "../Config/firebase";
 
 const LoginPage = () => {
@@ -14,7 +14,28 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
-  const { loginUser } = useAuth();
+  // Safely get auth context
+  const defaultAuth = {
+    user: null,
+    loginUser: async () => {},
+    logoutUser: () => {},
+    loading: false,
+    refreshUser: async () => {}
+  };
+
+  let authContext = defaultAuth;
+  try {
+    if (useAuth && typeof useAuth === 'function') {
+      const result = useAuth();
+      if (result && typeof result === 'object') {
+        authContext = result;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting auth context:', error);
+  }
+  
+  const loginUser = authContext?.loginUser ?? (async () => {});
 
   const handelChange = (e) => {
     setformdata({ ...formdata, [e.target.name]: e.target.value });

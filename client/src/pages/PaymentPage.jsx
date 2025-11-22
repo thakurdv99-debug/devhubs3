@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePayment } from '../context/PaymentContext';
-import NavBar from '../components/NavBar';
+import NavBar from '@shared/components/layout/NavBar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import PaymentHistoryPage from './PaymentHistoryPage';
 import PaymentAnalytics from '../components/payment/PaymentAnalytics';

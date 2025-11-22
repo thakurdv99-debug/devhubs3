@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth } from '@app/providers/AuthProvider';
 import chatService from '../services/chatService';
 
 const ChatContext = createContext();
