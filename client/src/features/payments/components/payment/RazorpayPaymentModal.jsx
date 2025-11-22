@@ -89,14 +89,36 @@ const RazorpayPaymentModal = ({ isOpen, onClose, paymentData, onSuccess, onError
           order = orderJson.data?.order || orderJson.order;
         }
 
+        // Validate order structure
+        const orderId = order?.order_id || order?.id;
+        if (!orderId) {
+          console.error('Razorpay Payment Error: Order ID missing', { order, paymentData });
+          throw new Error('Order ID is required for payment');
+        }
+
+        // Log order data for debugging
+        console.log('Razorpay Payment: Order data', {
+          orderId,
+          orderAmount: order?.amount,
+          orderAmountRupees: order?.order_amount,
+          hasOrderId: !!orderId
+        });
+
+        // Get user data for prefill
+        const userEmail = localStorage.getItem('email') || localStorage.getItem('userEmail') || '';
+        const userPhone = localStorage.getItem('phone') || localStorage.getItem('userPhone') || '9999999999';
+        const userName = localStorage.getItem('username') || localStorage.getItem('userName') || 'User';
+
         // Setup Razorpay options
+        // Note: When order_id is present, Razorpay uses the order's amount automatically
+        // Do NOT pass amount separately to avoid validation errors
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          amount: order?.amount || (order?.order_amount ? Math.round(order.order_amount * 100) : 0), // Ensure paise format
+          // Remove amount field - Razorpay will use order's amount when order_id is present
           currency: 'INR',
           name: 'DevHubs',
           description: paymentData?.description || 'Bid Fee Payment',
-          order_id: order?.order_id || order?.id,
+          order_id: orderId,
           handler: function (response) {
             if (!mounted) return;
             onSuccess?.({
@@ -107,8 +129,9 @@ const RazorpayPaymentModal = ({ isOpen, onClose, paymentData, onSuccess, onError
             setLoading(false);
           },
           prefill: {
-            email: '',
-            contact: ''
+            name: userName,
+            email: userEmail || 'user@example.com',
+            contact: userPhone || '9999999999'
           },
           theme: {
             color: '#00A8E8'
