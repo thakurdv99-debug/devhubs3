@@ -43,11 +43,23 @@ const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingEnvVars.length > 0) {
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction) {
-    // Fail fast in production
-    console.error('Missing required environment variables:', missingEnvVars);
+    // Fail fast in production with helpful error message
+    console.error('❌ Missing required environment variables:', missingEnvVars);
+    console.error('\n📋 To fix this error:');
+    console.error('   1. Set the following environment variables in your deployment platform:');
+    missingEnvVars.forEach(varName => {
+      console.error(`      - ${varName}`);
+    });
+    console.error('\n   2. For deployment platforms:');
+    console.error('      - Railway: Go to Variables tab and add each variable');
+    console.error('      - Render: Go to Environment tab and add each variable');
+    console.error('      - Heroku: Use "heroku config:set KEY=value" command');
+    console.error('      - Docker: Add to docker-compose.yml or use -e flags');
+    console.error('\n   3. See .env.example file for all required variables');
+    console.error('\n   4. After setting variables, restart your deployment\n');
     throw new Error(
       `Missing required environment variables: ${missingEnvVars.join(', ')}. ` +
-      'Server cannot start without these variables.'
+      'Server cannot start without these variables. Please set them in your deployment platform.'
     );
   } else {
     logger.error('Missing required environment variables:', { missing: missingEnvVars });
@@ -218,8 +230,8 @@ const generalLimiter = rateLimit({
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 100, // Limit each IP to 100 requests per 5 minutes
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
