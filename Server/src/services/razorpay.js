@@ -197,6 +197,16 @@ export const createOrder = async ({ orderId, amount, currency = 'INR', customer,
       notes: data.notes
     };
     
+    // Validate response
+    if (!responseWithToken.amount || !responseWithToken.order_id) {
+      logger.error('Invalid order response from Razorpay', {
+        orderId,
+        response: responseWithToken,
+        razorpayData: data
+      });
+      throw new Error('Invalid order response from Razorpay');
+    }
+    
     return responseWithToken;
   } catch (error) {
     logger.error('Failed to create Razorpay order', {

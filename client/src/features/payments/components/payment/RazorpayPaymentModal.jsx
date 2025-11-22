@@ -96,12 +96,21 @@ const RazorpayPaymentModal = ({ isOpen, onClose, paymentData, onSuccess, onError
           throw new Error('Order ID is required for payment');
         }
 
+        // Ensure amount is available in paise (Razorpay format)
+        if (!order?.amount && order?.order_amount) {
+          order.amount = Math.round(order.order_amount * 100);
+        }
+        if (!order?.amount) {
+          throw new Error('Order amount is missing. Please try again.');
+        }
+
         // Log order data for debugging
         console.log('Razorpay Payment: Order data', {
           orderId,
           orderAmount: order?.amount,
           orderAmountRupees: order?.order_amount,
-          hasOrderId: !!orderId
+          hasOrderId: !!orderId,
+          fullOrder: order
         });
 
         // Get user data for prefill
@@ -138,15 +147,34 @@ const RazorpayPaymentModal = ({ isOpen, onClose, paymentData, onSuccess, onError
           }
         };
 
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (response) {
-          if (!mounted) return;
-          setError('Payment failed. Please try again.');
-          setLoading(false);
-          onError?.(response.error);
-        });
-        rzp.open();
-        setLoading(false);
+        // Initialize Razorpay with retry logic for 400 errors
+        let retryCount = 0;
+        const maxRetries = 2;
+        const initializeRazorpay = async () => {
+          try {
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (response) {
+              if (!mounted) return;
+              const errorMessage = response.error?.description || 'Unknown error';
+              setError(`Payment failed: ${errorMessage}`);
+              setLoading(false);
+              onError?.(response.error);
+            });
+            rzp.open();
+            setLoading(false);
+          } catch (error) {
+            const errorMessage = error?.message || '';
+            if (retryCount < maxRetries && (errorMessage.includes('400') || errorMessage.includes('Bad Request'))) {
+              retryCount++;
+              console.log(`Retrying Razorpay initialization (attempt ${retryCount}/${maxRetries})...`);
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              return initializeRazorpay();
+            }
+            throw error;
+          }
+        };
+        
+        await initializeRazorpay();
       } catch (err) {
         if (mounted) {
           setError(err?.message || 'An error occurred while initializing payment');

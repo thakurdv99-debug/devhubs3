@@ -459,8 +459,11 @@ const BidingProporsalPage = () => {
         const bidId = verifyResponse.data.bidId;
         const successMessage = `Payment successful! Your bid has been submitted and activated.\n\nYour Bid Details:\n• Original Bid: ₹${bidAmount}\n• Bidding Fee: ₹${getBidFee()}\n• Total Amount: ₹${bidAmount + getBidFee()}\n\nYour bid is now visible to the project owner.`;
         alert(successMessage);
-        // Refresh user details (free bids / subscription) and then navigate
-        try { await refreshUser(); } catch (e) { /* ignore */ }
+        
+        // Refresh user details (non-blocking)
+        refreshUser().catch(e => console.warn('Failed to refresh user:', e));
+        
+        // Navigate immediately
         navigate(`/bidingPage/${_id}`, { 
           state: { 
             success: true, 
