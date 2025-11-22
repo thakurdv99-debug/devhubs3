@@ -18,7 +18,8 @@
     "test:all": "npm run test:api && npm run test:categories && npm run test:contributions",
     "kill-port": "node scripts/kill-port.js",
     "kill-port:5000": "node scripts/kill-port.js 5000",
-    "kill-port:5001": "node scripts/kill-port.js 5001"
+    "kill-port:5001": "node scripts/kill-port.js 5001",
+    "grant-admin": "node -r dotenv/config scripts/grant-admin-role.js"
   },
   "keywords": [],
   "author": "",
