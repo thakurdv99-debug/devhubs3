@@ -19,7 +19,9 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/getuser`, {
+      // Normalize URL to prevent double slashes
+      const apiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+      const res = await axios.get(`${apiUrl}/api/getuser`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUser(res.data);
