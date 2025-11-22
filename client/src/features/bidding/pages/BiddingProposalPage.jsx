@@ -427,25 +427,61 @@ const BidingProporsalPage = () => {
       const orderId = result?.razorpay_order_id || paymentData?.order?.order_id || paymentData?.order_id;
       if (!orderId) throw new Error('Order ID not available for verification');
 
-      const verifyResponse = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/payments/verify-razorpay/${orderId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Retry logic with exponential backoff for 429 errors
+      let verifyResponse;
+      let retries = 0;
+      const maxRetries = 3;
+      let retryAfterSeconds = null;
 
-      if (verifyResponse.data && verifyResponse.data.success) {
+      while (retries <= maxRetries) {
+        try {
+          verifyResponse = await axios.get(
+            `${import.meta.env.VITE_API_URL}/api/payments/verify-razorpay/${orderId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          break; // Success, exit retry loop
+        } catch (error) {
+          if (error.response?.status === 429 && retries < maxRetries) {
+            retryAfterSeconds = error.response?.data?.retryAfterSeconds || 
+                               parseInt(error.response?.headers['retry-after']) || 
+                               5; // Default to 5 seconds
+            console.log(`Rate limited. Retrying after ${retryAfterSeconds} seconds... (attempt ${retries + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, retryAfterSeconds * 1000));
+            retries++;
+            continue;
+          }
+          throw error; // Re-throw if not 429 or max retries reached
+        }
+      }
+
+      if (verifyResponse && verifyResponse.data && verifyResponse.data.success) {
         // Bid should be created/activated by backend during verification
+        const bidId = verifyResponse.data.bidId;
         const successMessage = `Payment successful! Your bid has been submitted and activated.\n\nYour Bid Details:\n• Original Bid: ₹${bidAmount}\n• Bidding Fee: ₹${getBidFee()}\n• Total Amount: ₹${bidAmount + getBidFee()}\n\nYour bid is now visible to the project owner.`;
         alert(successMessage);
         // Refresh user details (free bids / subscription) and then navigate
         try { await refreshUser(); } catch (e) { /* ignore */ }
-        navigate(`/bidingPage/${_id}`, { state: { success: true, message: 'Payment successful! Bid submitted and activated.' } });
+        navigate(`/bidingPage/${_id}`, { 
+          state: { 
+            success: true, 
+            message: 'Payment successful! Bid submitted and activated.',
+            bidId: bidId 
+          } 
+        });
       } else {
-        console.warn('Payment verification did not return success, response:', verifyResponse.data);
+        console.warn('Payment verification did not return success, response:', verifyResponse?.data);
         setError('Payment completed but verification failed. Please contact support.');
       }
     } catch (error) {
       console.error('Error handling payment success:', error);
-      setError(error.response?.data?.message || 'Payment successful but there was an issue. Please contact support.');
+      if (error.response?.status === 429) {
+        const retryAfter = error.response?.data?.retryAfterSeconds || 
+                         parseInt(error.response?.headers['retry-after']) || 
+                         'a few';
+        setError(`Too many requests. Please wait ${retryAfter} seconds and try again. Your payment was successful, but verification is pending.`);
+      } else {
+        setError(error.response?.data?.message || 'Payment successful but there was an issue. Please contact support.');
+      }
     }
   };
 

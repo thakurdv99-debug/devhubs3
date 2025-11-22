@@ -1387,6 +1387,7 @@ export const verifyPaymentWithRazorpay = async (req, res) => {
               // Update payment intent with bidId
               intent.notes.bidId = bidId.toString();
               await intent.save();
+              console.log(`[Payment Verification] Created new bid: ${bidId} for project: ${intent.projectId}`);
             } else {
               // Update bid status if it exists
               await Bidding.findByIdAndUpdate(bidId, {
@@ -1394,8 +1395,18 @@ export const verifyPaymentWithRazorpay = async (req, res) => {
                 'escrow_details.payment_intent_id': intent._id.toString(),
                 'escrow_details.locked_at': new Date()
               });
+              console.log(`[Payment Verification] Updated existing bid: ${bidId}`);
             }
-            break;
+            
+            // Return response with bidId for bid_fee payments
+            return res.status(200).json({
+              success: true,
+              message: 'Payment verified and bid created/activated',
+              paymentStatus: 'paid',
+              purpose: intent.purpose,
+              bidId: bidId.toString(),
+              projectId: intent.projectId
+            });
         }
         
         return res.status(200).json({

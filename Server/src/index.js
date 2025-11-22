@@ -310,6 +310,14 @@ app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/login') || req.path.startsWith('/user') || req.path.startsWith('/github/login')) {
     return next();
   }
+  // Skip general limiter for payment verification (critical for payment flow)
+  if (req.path.startsWith('/payments/verify-razorpay')) {
+    return next();
+  }
+  // Skip general limiter for read-only payment endpoints (analytics, subscription status)
+  if (req.path.startsWith('/payments/analytics') || req.path.startsWith('/payments/subscription/status')) {
+    return next();
+  }
   generalLimiter(req, res, next);
 });
 
